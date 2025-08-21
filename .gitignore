@@ -19,6 +19,7 @@ data/*.csv
 data/*.json
 data/*.jsonl
 .wwebjs_auth/
+.wwebjs_cache/
 
 # Cobertura e caches
 coverage/
