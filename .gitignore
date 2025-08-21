@@ -16,6 +16,9 @@ lerna-debug.log*
 
 # Dados gerados em runtime
 data/*.csv
+data/*.json
+data/*.jsonl
+.wwebjs_auth/
 
 # Cobertura e caches
 coverage/

@@ -1,4 +1,4 @@
-## OryxBot — Desenvolvimento (Fastify + WhatsApp Cloud API + Groq)
+## OryxBot — Desenvolvimento (Fastify + WhatsApp Cloud API + WhatsApp Web + Groq)
 
 Guia conciso para rodar em desenvolvimento, configurar o webhook e entender a estrutura do projeto.
 
@@ -22,7 +22,10 @@ Crie um arquivo `.env` com:
 ```bash
 PORT=3000
 
-# WhatsApp Cloud API
+# Modo de operação do WhatsApp
+WHATSAPP_MODE=cloud # ou web
+
+# WhatsApp Cloud API (usado quando WHATSAPP_MODE=cloud)
 WHATSAPP_VERIFY_TOKEN=coloque-um-token-forte
 WHATSAPP_ACCESS_TOKEN=EAA... (token do painel)
 WHATSAPP_PHONE_NUMBER_ID=1234567890 (ID numérico do número, não é o +55...)
@@ -44,6 +47,26 @@ RAG_CHUNK_OVERLAP=120
 npm run dev
 ```
 Healthcheck local: abra `http://localhost:3000/` e verifique `{ ok: true }`.
+
+### Modo WhatsApp Web (v1)
+- Requisitos: navegador headless via Puppeteer (instalado automaticamente). Em Windows pode aparecer um prompt para instalar/atualizar o Chrome headless.
+- Primeiro uso: ao iniciar com `WHATSAPP_MODE=web`, o terminal exibirá um QR (ASCII). Escaneie com o WhatsApp do número desejado.
+- Endpoints auxiliares:
+  - `GET /wa-web/status` → `{ mode, ready, authenticated, hasQr }`
+  - `GET /wa-web/qr` → `{ qr }` com o texto do QR atual (para renderizar em outro app)
+  
+Notas:
+- O `session` é salvo automaticamente (LocalAuth) em uma pasta `.wwebjs_auth/`. Em reexecuções, não será preciso escanear novamente.
+- Para trocar de número, apague a pasta `.wwebjs_auth/oryxbot` com o serviço parado.
+- Mantenha `.wwebjs_auth/`, `data/*.json` e `data/*.jsonl` no `.gitignore` para evitar comitar sessões e dados sensíveis.
+
+#### Comportamento (modo WhatsApp Web)
+- Apenas DMs: mensagens de grupos (`@g.us`) são ignoradas.
+- Mensagens antigas: somente mensagens com timestamp posterior ao momento em que o cliente fica pronto (evento `ready`) são processadas. Mensagens anteriores são ignoradas.
+- Apresentação do bot em saudações: para mensagens como "oi", "olá/ola", "hey", "e aí/eaí", "bom dia/boa tarde/boa noite", o bot envia uma apresentação (“Olá! Você está falando com o assistente virtual da Oryx. Vou te ajudar por aqui.”) no máximo 1 vez a cada 24h por contato. Não dispara se o contato estiver em handoff.
+- Handoff humano facilitado: se o bot sugerir falar com um humano, por até 1h respostas como “sim”, “ok”, “pode ser” ativam automaticamente o handoff. Respostas como “não”, “depois” cancelam a oferta. "retornar ao bot" desativa o handoff.
+- Sem contexto RAG: quando não houver trechos relevantes nas docs (`knowledge/faq`), a resposta inclui um aviso para confirmar com um atendente humano.
+- Logs do WhatsApp Web: eventos de QR, autenticado, cliente pronto e desconectado são logados apenas uma vez por execução (anti-spam de logs).
 
 ## Expondo via túnel (apenas para desenvolvimento)
 Abra um túnel para obter uma URL pública (temporária):
@@ -105,6 +128,7 @@ src/
   services/
     groq.js               # Cliente e geração de resposta via Groq
     whatsapp.js           # Envio de mensagens e marcação como lida na Cloud API
+    whatsapp-web.js       # Cliente whatsapp-web.js, QR/status e envio no modo web
   knowledge/
     rag.js               # RAG leve (BM25 via MiniSearch): load, search e contexto
   utils/
@@ -120,6 +144,93 @@ data/
 - `GET /webhook` → verificação do webhook (usa `WHATSAPP_VERIFY_TOKEN`)
 - `POST /webhook` → recepção de mensagens do WhatsApp; chama Groq e responde
 - `POST /chat` → teste local sem WhatsApp; usa RAG e retorna `{ reply, usedSnippets }`
+
+## Handoff humano (transferência para atendente)
+O bot possui um modo de "atendimento humano" por contato. Quando ativado, o bot deixa de responder com IA para aquele número e apenas informa que o atendimento está com um humano, explicando como voltar ao assistente.
+
+Onde fica a lógica
+- `src/utils/handoff.js` → persistência simples em `data/handoff.json` por `fromWaId` (telefone do cliente)
+- `src/server.js` → desvio de fluxo no webhook e no endpoint de teste
+
+Como ativar (palavras‑chave, sem acento/maiúsculas importam menos)
+- "atendente", "ser humano", "humano", "falar com atendente", "falar com humano", "atendimento humano"
+
+Como desativar (voltar ao bot)
+- Envie: "retornar ao bot" (também aceitos: "voltar ao bot", "retomar bot", "menu")
+
+Comportamento
+- Ao ativar: registra `handoff:ativado` e envia UMA mensagem confirmando a transferência para um atendente humano, incluindo a instrução para voltar: "retornar ao bot".
+- Enquanto ativo: novas mensagens do cliente NÃO passam pela IA e NÃO há lembretes automáticos. O bot só volta a responder quando o cliente escrever a palavra de retorno.
+- Ao desativar (cliente envia "retornar ao bot"): envia confirmação e volta a responder normalmente com IA.
+- Persistência: o estado fica salvo em `data/handoff.json` até o cliente enviar a palavra de retorno ou o arquivo ser limpo manualmente.
+
+Testes sem WhatsApp (local)
+- Simula o webhook sem chamar a API do WhatsApp:
+```
+POST http://localhost:3000/webhook-test
+Body JSON: { "from": "5511999999999", "text": "Quero falar com um atendente" }
+```
+- Retornar ao bot:
+```
+POST http://localhost:3000/webhook-test
+Body JSON: { "from": "5511999999999", "text": "retornar ao bot" }
+```
+
+Observações
+- Apenas mensagens de texto disparam o fluxo.
+- Não existe lembrete periódico; somente a mensagem única de ativação.
+- Logs continuam em `data/interactions.csv` com marcadores `[handoff:ativado]`/`[handoff:ativo]`.
+
+## Guia rápido: abrir túnel e configurar o webhook (desenvolvimento)
+1) Iniciar o servidor
+```bash
+npm run dev
+```
+
+2) Abrir o túnel (Windows/PowerShell sugerido)
+```powershell
+npx --yes localtunnel --port 3000 | Tee-Object -FilePath lt.log
+```
+– A URL pública aparecerá no console e/ou em `lt.log` como `your url is: https://...loca.lt`.
+
+3) Configurar o webhook no App (developers.facebook.com → seu App → WhatsApp → Webhooks)
+- Callback URL: `https://SUA-URL-PUBLICA/webhook` (por ex.: `https://xxxx.loca.lt/webhook`)
+- Verify token: o mesmo de `WHATSAPP_VERIFY_TOKEN` no `.env`
+- Clique em “Verificar e salvar”
+- Em “Gerenciar”, marque o campo `messages`
+
+4) Validar manualmente
+Abra no navegador (troque pelos seus valores):
+```
+https://SUA-URL-PUBLICA/webhook?hub.mode=subscribe&hub.verify_token=SEU_TOKEN&hub.challenge=123
+```
+Se tudo certo, retorna `123`.
+
+5) Permissões do App
+- Em “Desenvolvimento”, somente pessoas com função no App (admin/dev/tester) recebem eventos.
+- Alternativas: adicionar seu usuário como Tester (e aceitar o convite) ou colocar o App “Ao vivo”.
+
+6) Testar fim a fim
+- Envie uma MENSAGEM DE TEXTO do seu WhatsApp para o número real conectado à Cloud API.
+- Acompanhe os logs:
+```powershell
+# Auditoria detalhada
+Get-Content .\data\audit.jsonl -Wait -Tail 50
+
+# Resumo de conversas
+Get-Content .\data\interactions.csv -Wait -Tail 50
+```
+
+7) Quando o túnel cair
+- Reabra o túnel (passo 2) e atualize a Callback URL com a nova `https://...loca.lt/webhook`.
+
+8) Teste local sem WhatsApp (opcional)
+- Use `POST /webhook-test` para simular uma entrada:
+```bash
+curl -X POST http://localhost:3000/webhook-test \
+  -H "Content-Type: application/json" \
+  -d '{"from":"5511999999999","text":"ping"}'
+```
 
 ## Personalização do agente (tom e políticas)
 Agora o tom é configurável via `.env` em `AGENT_TONE`:
