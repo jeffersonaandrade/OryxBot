@@ -219,6 +219,9 @@ Get-Content .\data\audit.jsonl -Wait -Tail 50
 
 # Resumo de conversas
 Get-Content .\data\interactions.csv -Wait -Tail 50
+
+# Auditoria (somente erros)
+Get-Content .\data\audit.jsonl -Wait -Tail 50
 ```
 
 7) Quando o túnel cair

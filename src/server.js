@@ -46,19 +46,16 @@ if (WHATSAPP_MODE === 'web' && waWebRef && waWebRef.getClient) {
     let waWebActiveSinceMs = Date.now();
     webClient.once('ready', () => {
         waWebActiveSinceMs = Date.now();
-        appendAudit('wa_web_active_since', { atIso: new Date(waWebActiveSinceMs).toISOString() });
     });
     webClient.on('message', async (msg) => {
         try {
             const isGroup = Boolean(msg && msg.from && msg.from.endsWith('@g.us'));
             if (isGroup) {
-                appendAudit('ignored_message', { reason: 'group_chat', from: msg.from });
                 return;
             }
             // Ignora mensagens antigas, recebidas antes do cliente ficar ativo
             const tsMs = typeof msg.timestamp === 'number' ? msg.timestamp * 1000 : Date.now();
             if (waWebActiveSinceMs && tsMs < waWebActiveSinceMs) {
-                appendAudit('ignored_message', { reason: 'before_activation', from: msg.from, tsMs, activeSinceMs: waWebActiveSinceMs });
                 return;
             }
             if (msg && msg.type === 'chat') {
@@ -67,7 +64,7 @@ if (WHATSAPP_MODE === 'web' && waWebRef && waWebRef.getClient) {
                 if (!userText.trim()) return;
                 await handleIncoming(fromWaId, userText, 'wa-web', { dryRun: false });
             } else {
-                appendAudit('ignored_message', { reason: 'non_text', type: msg && msg.type });
+                // ignore non-text
             }
         } catch (err) {
             app.log.error({ err }, 'Erro ao processar mensagem (wa-web)');
@@ -99,7 +96,7 @@ app.post('/chat', async (request) => {
 // Função comum de processamento de mensagens (usada no webhook e no teste local)
 async function handleIncoming(fromWaId, userText, toWaId, options) {
     const dryRun = Boolean(options && options.dryRun);
-    appendAudit('incoming', { fromWaId, toWaId, userText, dryRun });
+    // auditoria apenas para erros a partir de agora
 
     // Regras de handoff humano
     const normalized = (userText || '').toLowerCase();
@@ -127,7 +124,6 @@ async function handleIncoming(fromWaId, userText, toWaId, options) {
             setHandoff(fromWaId, false);
             const msg = 'Perfeito! Retomando o atendimento automático. Como posso ajudar?';
             if (!dryRun) await waSendText(fromWaId, msg);
-            appendAudit('handoff_end', { fromWaId });
             appendInteraction({
                 timestampIso: new Date().toISOString(),
                 fromWaId,
@@ -144,7 +140,6 @@ async function handleIncoming(fromWaId, userText, toWaId, options) {
             userText,
             botText: '[handoff:ativo]'
         });
-        appendAudit('handoff_active', { fromWaId });
         return '[handoff:ativo]';
     }
 
@@ -169,13 +164,11 @@ async function handleIncoming(fromWaId, userText, toWaId, options) {
                 userText,
                 botText: '[handoff:ativado]'
             });
-            appendAudit('handoff_start_by_accept', { fromWaId });
             return msg;
         }
 
         if (rejects) {
             clearHandoffOffer(fromWaId);
-            appendAudit('handoff_offer_rejected', { fromWaId });
             // segue fluxo normal sem resposta adicional
         }
     }
@@ -191,7 +184,6 @@ async function handleIncoming(fromWaId, userText, toWaId, options) {
             userText,
             botText: '[handoff:ativado]'
         });
-        appendAudit('handoff_start', { fromWaId });
         return msg;
     }
 
@@ -202,7 +194,6 @@ async function handleIncoming(fromWaId, userText, toWaId, options) {
         const intro = 'Olá! Você está falando com o assistente virtual da Oryx. Vou te ajudar por aqui.';
         if (!dryRun) await waSendText(fromWaId, intro);
         markIntroSent(fromWaId);
-        appendAudit('intro_sent', { fromWaId });
     }
 
     const groq = createGroqClient();
@@ -230,7 +221,6 @@ async function handleIncoming(fromWaId, userText, toWaId, options) {
         const suggestsHandoff = /encaminhar|transferir/.test(low) && /(atendente|humano)/.test(low);
         if (suggestsHandoff) {
             setHandoffOffer(fromWaId);
-            appendAudit('handoff_offer_set', { fromWaId });
         }
     } catch (_) {}
 
@@ -246,7 +236,6 @@ async function handleIncoming(fromWaId, userText, toWaId, options) {
         botText: finalReply || ''
     });
 
-    appendAudit('bot_reply', { fromWaId, toWaId, userText, aiReply: finalReply });
 
     return finalReply || '';
 }
