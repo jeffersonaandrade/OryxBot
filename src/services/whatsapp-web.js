@@ -79,8 +79,33 @@ function getClient() {
 async function sendTextMessage(toWaId, text) {
     const c = getClient();
     if (!isReady) throw new Error('WhatsApp Web client não está pronto');
-    const jid = toWaId.endsWith('@c.us') ? toWaId : `${toWaId}@c.us`;
-    await c.sendMessage(jid, text);
+    
+    try {
+        const jid = toWaId.endsWith('@c.us') ? toWaId : `${toWaId}@c.us`;
+        
+        // Validar texto antes de enviar
+        if (!text || typeof text !== 'string' || text.trim().length === 0) {
+            throw new Error('Texto da mensagem inválido ou vazio');
+        }
+        
+        // Limitar tamanho da mensagem (WhatsApp tem limite)
+        const maxLength = 4000;
+        const messageText = text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+        
+        await c.sendMessage(jid, messageText);
+        
+    } catch (error) {
+        console.error(`[WA-Web] Erro ao enviar mensagem para ${toWaId}:`, error.message);
+        
+        // Se for erro de avaliação do Puppeteer, tentar reconectar
+        if (error.message.includes('Evaluation failed')) {
+            console.warn('[WA-Web] Erro de Puppeteer detectado. Cliente pode estar instável.');
+            isReady = false;
+            isAuthenticated = false;
+        }
+        
+        throw error;
+    }
 }
 
 function getStatus() {

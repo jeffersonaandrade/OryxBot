@@ -58,13 +58,62 @@ if (WHATSAPP_MODE === 'web' && waWebRef && waWebRef.getClient) {
             if (waWebActiveSinceMs && tsMs < waWebActiveSinceMs) {
                 return;
             }
+            // Processar apenas mensagens de texto
             if (msg && msg.type === 'chat') {
                 const fromWaId = (msg.from || '').replace('@c.us', '');
                 const userText = msg.body || '';
                 if (!userText.trim()) return;
                 await handleIncoming(fromWaId, userText, 'wa-web', { dryRun: false });
             } else {
-                // ignore non-text
+                // Responder automaticamente para tipos de mensagem não suportados
+                if (msg && msg.type && msg.from) {
+                    const fromWaId = (msg.from || '').replace('@c.us', '');
+                    
+                    // Log simples para auditoria
+                    app.log.info(`[WA-Web] Mensagem ${msg.type} ignorada de ${fromWaId}`);
+                    
+                    // Mensagem educativa baseada no tipo
+                    let responseMessage = '';
+                    switch (msg.type) {
+                        case 'ptt': // Mensagem de voz
+                            responseMessage = '🎤 Recebi seu áudio! Infelizmente ainda não consigo processar mensagens de voz. Por favor, envie sua pergunta por texto que terei prazer em ajudar! 😊';
+                            break;
+                        case 'image':
+                            responseMessage = '📷 Recebi sua imagem! No momento só consigo processar mensagens de texto. Por favor, descreva sua dúvida por escrito que vou te ajudar! 😊';
+                            break;
+                        case 'video':
+                            responseMessage = '🎥 Recebi seu vídeo! Atualmente só consigo entender mensagens de texto. Por favor, envie sua pergunta por escrito que vou responder! 😊';
+                            break;
+                        case 'document':
+                            responseMessage = '📄 Recebi seu documento! Por enquanto só consigo processar mensagens de texto. Pode me contar sobre o que precisa por escrito? 😊';
+                            break;
+                        case 'sticker':
+                            responseMessage = '😄 Gostei do seu sticker! Mas só consigo responder mensagens de texto. Me conta como posso te ajudar digitando sua pergunta! 😊';
+                            break;
+                        case 'location':
+                            responseMessage = '📍 Recebi sua localização! No momento só consigo processar mensagens de texto. Me explique como posso ajudar por escrito! 😊';
+                            break;
+                        default:
+                            responseMessage = '📱 Recebi sua mensagem, mas só consigo processar texto no momento. Por favor, envie sua pergunta por escrito que vou te ajudar! 😊';
+                    }
+                    
+                    // Enviar resposta educativa (sem dry run)
+                    try {
+                        await waSendText(fromWaId, responseMessage);
+                        
+                        // Registrar interação na auditoria
+                        appendInteraction({
+                            timestampIso: new Date().toISOString(),
+                            fromWaId,
+                            toWaId: 'wa-web',
+                            userText: `[${msg.type}]`,
+                            botText: responseMessage
+                        });
+                    } catch (err) {
+                        app.log.error({ err, fromWaId, msgType: msg.type }, 'Erro ao enviar resposta educativa');
+                    }
+                }
+                return; // Importante: sair explicitamente
             }
         } catch (err) {
             app.log.error({ err }, 'Erro ao processar mensagem (wa-web)');
@@ -237,7 +286,25 @@ async function handleIncoming(fromWaId, userText, toWaId, options) {
     } catch (_) {}
 
     if (finalReply) {
-        if (!dryRun) await waSendText(fromWaId, finalReply);
+        if (!dryRun) {
+            try {
+                await waSendText(fromWaId, finalReply);
+            } catch (sendError) {
+                app.log.error({ err: sendError, fromWaId, replyLength: finalReply.length }, 'Erro ao enviar resposta');
+                
+                // Se WhatsApp Web falhou, tentar reconectar na próxima mensagem
+                if (WHATSAPP_MODE === 'web' && sendError.message.includes('Evaluation failed')) {
+                    app.log.warn('Puppeteer instável detectado. Próxima mensagem pode requerer reconexão.');
+                }
+                
+                // Registrar falha na auditoria  
+                appendAudit('send_message_failed', { 
+                    fromWaId, 
+                    error: sendError.message,
+                    replyLength: finalReply.length 
+                });
+            }
+        }
     }
 
     appendInteraction({
