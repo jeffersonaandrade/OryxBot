@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OryxBot - Conectar WhatsApp</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+    <script>
+        // Debug: verificar se QRCode está carregado
+        console.log('QRCode library loaded:', typeof qrcode !== 'undefined');
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        whatsapp: '#25D366',
+                        whatsappDark: '#128C7E',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gradient-to-br from-slate-100 to-slate-200 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-4xl mx-auto px-6 py-4">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-whatsapp rounded-lg flex items-center justify-center">
+                    <i class="fas fa-robot text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-gray-900">OryxBot</h1>
+                    <p class="text-sm text-gray-600">Assistente Virtual WhatsApp</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-4xl mx-auto px-6 py-8">
+        <div class="grid md:grid-cols-2 gap-8">
+            <!-- QR Code Section -->
+            <div class="bg-white rounded-2xl shadow-lg p-8">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-whatsapp/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fab fa-whatsapp text-whatsapp text-2xl"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">Conectar WhatsApp</h2>
+                    <p class="text-gray-600 mb-6">Escaneie o QR Code para conectar seu WhatsApp</p>
+                </div>
+
+                <!-- Status Card -->
+                <div id="status" class="mb-6 p-4 rounded-lg border-l-4 border-yellow-500 bg-yellow-50">
+                    <div class="flex items-center">
+                        <i class="fas fa-spinner fa-spin text-yellow-600 mr-3"></i>
+                        <span class="text-yellow-800">Verificando status...</span>
+                    </div>
+                </div>
+
+                <!-- QR Code Container -->
+                <div class="bg-gray-50 rounded-xl p-6 mb-6">
+                    <div id="qrcode" class="flex items-center justify-center min-h-[200px]">
+                        <div class="text-center text-gray-500">
+                            <i class="fas fa-qrcode text-4xl mb-3"></i>
+                            <p>Carregando QR Code...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <button onclick="checkStatus()" 
+                            class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-lg transition-colors flex items-center justify-center">
+                        <i class="fas fa-sync-alt mr-2"></i>
+                        Atualizar Status
+                    </button>
+                    <button onclick="showQR()" 
+                            class="flex-1 bg-whatsapp hover:bg-whatsappDark text-white font-medium py-3 px-6 rounded-lg transition-colors flex items-center justify-center">
+                        <i class="fas fa-qrcode mr-2"></i>
+                        Gerar QR Code
+                    </button>
+                </div>
+            </div>
+
+            <!-- Instructions Section -->
+            <div class="space-y-6">
+                <!-- How to Connect -->
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                        <i class="fas fa-mobile-alt text-whatsapp mr-3"></i>
+                        Como Conectar
+                    </h3>
+                    <div class="space-y-4">
+                        <div class="flex items-start space-x-3">
+                            <div class="w-6 h-6 bg-whatsapp text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">1</div>
+                            <p class="text-gray-700">Abra o <strong>WhatsApp</strong> no seu celular</p>
+                        </div>
+                        <div class="flex items-start space-x-3">
+                            <div class="w-6 h-6 bg-whatsapp text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">2</div>
+                            <p class="text-gray-700">Toque no menu <strong>⋮</strong> e vá em <strong>"Dispositivos conectados"</strong></p>
+                        </div>
+                        <div class="flex items-start space-x-3">
+                            <div class="w-6 h-6 bg-whatsapp text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">3</div>
+                            <p class="text-gray-700">Toque em <strong>"Conectar um dispositivo"</strong></p>
+                        </div>
+                        <div class="flex items-start space-x-3">
+                            <div class="w-6 h-6 bg-whatsapp text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">4</div>
+                            <p class="text-gray-700">Escaneie o QR Code ao lado</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Info -->
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                        <i class="fas fa-info-circle text-blue-500 mr-3"></i>
+                        Status da Conexão
+                    </h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-3 h-3 bg-yellow-400 rounded-full"></div>
+                            <span class="text-gray-700"><strong>Aguardando:</strong> QR Code disponível para escaneamento</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="w-3 h-3 bg-blue-400 rounded-full"></div>
+                            <span class="text-gray-700"><strong>Autenticando:</strong> QR Code escaneado, validando conexão</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="w-3 h-3 bg-green-400 rounded-full"></div>
+                            <span class="text-gray-700"><strong>Conectado:</strong> WhatsApp pronto para receber mensagens</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tips -->
+                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-200">
+                    <h3 class="text-lg font-semibold text-blue-900 mb-3 flex items-center">
+                        <i class="fas fa-lightbulb text-yellow-500 mr-3"></i>
+                        Dicas Importantes
+                    </h3>
+                    <ul class="space-y-2 text-sm text-blue-800">
+                        <li class="flex items-start space-x-2">
+                            <i class="fas fa-check text-green-500 mt-1 flex-shrink-0"></i>
+                            <span>Mantenha o WhatsApp aberto durante o processo</span>
+                        </li>
+                        <li class="flex items-start space-x-2">
+                            <i class="fas fa-check text-green-500 mt-1 flex-shrink-0"></i>
+                            <span>O QR Code expira em alguns minutos</span>
+                        </li>
+                        <li class="flex items-start space-x-2">
+                            <i class="fas fa-check text-green-500 mt-1 flex-shrink-0"></i>
+                            <span>Após conectar, feche esta aba</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-12 pb-8">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <p class="text-sm text-gray-500">
+                <i class="fas fa-shield-alt mr-1"></i>
+                Conexão segura e criptografada pelo WhatsApp
+            </p>
+        </div>
+    </footer></body>
+
+    <script>
+        async function checkStatus() {
+            try {
+                const response = await fetch('/wa-web/status');
+                const status = await response.json();
+                
+                const statusDiv = document.getElementById('status');
+                const qrcodeDiv = document.getElementById('qrcode');
+                
+                if (status.ready) {
+                    statusDiv.className = 'mb-6 p-4 rounded-lg border-l-4 border-green-500 bg-green-50';
+                    statusDiv.innerHTML = `
+                        <div class="flex items-center">
+                            <i class="fas fa-check-circle text-green-600 mr-3"></i>
+                            <div>
+                                <p class="text-green-800 font-medium">✅ WhatsApp conectado e pronto!</p>
+                                <p class="text-green-700 text-sm mt-1">Bot está funcionando e pode receber mensagens</p>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Esconder área do QR Code se já conectado
+                    qrcodeDiv.innerHTML = `
+                        <div class="text-center text-green-600 py-8">
+                            <i class="fas fa-check-circle text-6xl mb-4"></i>
+                            <p class="text-lg font-medium">Conectado com sucesso!</p>
+                            <p class="text-sm">Você pode fechar esta aba</p>
+                        </div>
+                    `;
+                    
+                    // Esconder botões
+                    document.querySelector('.flex.flex-col.sm\\:flex-row.gap-3').style.display = 'none';
+                    
+                } else if (status.authenticated) {
+                    statusDiv.className = 'mb-6 p-4 rounded-lg border-l-4 border-blue-500 bg-blue-50';
+                    statusDiv.innerHTML = `
+                        <div class="flex items-center">
+                            <i class="fas fa-sync-alt fa-spin text-blue-600 mr-3"></i>
+                            <span class="text-blue-800">🔄 Autenticado, estabelecendo conexão...</span>
+                        </div>
+                    `;
+                } else if (status.hasQr) {
+                    statusDiv.className = 'mb-6 p-4 rounded-lg border-l-4 border-yellow-500 bg-yellow-50';
+                    statusDiv.innerHTML = `
+                        <div class="flex items-center">
+                            <i class="fas fa-qrcode text-yellow-600 mr-3"></i>
+                            <span class="text-yellow-800">📱 QR Code disponível - escaneie para conectar</span>
+                        </div>
+                    `;
+                    
+                    // Carregar QR automaticamente apenas se ainda não foi carregado
+                    if (!document.getElementById('qrcode').innerHTML.includes('svg')) {
+                        setTimeout(showQR, 1000);
+                    }
+                    
+                } else {
+                    statusDiv.className = 'mb-6 p-4 rounded-lg border-l-4 border-gray-500 bg-gray-50';
+                    statusDiv.innerHTML = `
+                        <div class="flex items-center">
+                            <i class="fas fa-spinner fa-spin text-gray-600 mr-3"></i>
+                            <span class="text-gray-800">⏳ Inicializando WhatsApp Web...</span>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                const statusDiv = document.getElementById('status');
+                statusDiv.className = 'mb-6 p-4 rounded-lg border-l-4 border-red-500 bg-red-50';
+                statusDiv.innerHTML = `
+                    <div class="flex items-center">
+                        <i class="fas fa-exclamation-triangle text-red-600 mr-3"></i>
+                        <span class="text-red-800">❌ Erro ao verificar status</span>
+                    </div>
+                `;
+            }
+        }
+
+        async function showQR() {
+            console.log('🔄 showQR() chamada');
+            try {
+                console.log('📡 Fazendo requisição para /wa-web/qr');
+                const response = await fetch('/wa-web/qr');
+                console.log('📡 Resposta recebida:', response.status, response.statusText);
+                
+                const data = await response.json();
+                console.log('📄 Dados recebidos:', data);
+                
+                if (data.qr) {
+                    // Verificar se é o mesmo QR Code
+                    const currentQrHash = btoa(data.qr).slice(0, 20); // Hash simples para comparação
+                    if (lastQrHash === currentQrHash && qrCodeDisplayed) {
+                        console.log('📋 QR Code já exibido, ignorando...');
+                        return;
+                    }
+                    
+                    console.log('✅ QR Code encontrado, tentando renderizar...');
+                    const qrCodeDiv = document.getElementById('qrcode');
+                    qrCodeDiv.innerHTML = '';
+                    
+                    // Verificar se qrcode está disponível
+                    if (typeof qrcode === 'undefined') {
+                        console.error('❌ QRCode library não está carregada!');
+                        qrCodeDiv.innerHTML = `
+                            <div class="text-center text-red-600 py-8">
+                                <i class="fas fa-exclamation-triangle text-4xl mb-3"></i>
+                                <p class="text-lg font-medium">Biblioteca QR Code não carregada</p>
+                                <p class="text-sm">Recarregue a página</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    try {
+                        console.log('🎨 Gerando QR Code...');
+                        
+                        // Criar QR Code usando qrcode-generator
+                        const qr = qrcode(0, 'M');
+                        qr.addData(data.qr);
+                        qr.make();
+                        
+                        // Criar SVG
+                        const size = 300;
+                        const svg = qr.createSvgTag(4, 0);
+                        
+                        // Adicionar estilos ao SVG
+                        const styledSvg = svg.replace(
+                            '<svg',
+                            `<svg width="${size}" height="${size}" style="border: 1px solid #e5e7eb; border-radius: 8px; background: white;"`
+                        );
+                        
+                        qrCodeDiv.innerHTML = styledSvg;
+                        
+                        // Marcar como exibido
+                        qrCodeDisplayed = true;
+                        lastQrHash = currentQrHash;
+                        
+                        console.log('✅ QR Code gerado com sucesso!');
+                        
+                    } catch (error) {
+                        console.error('❌ Erro ao gerar QR Code:', error);
+                        qrCodeDiv.innerHTML = `
+                            <div class="text-center text-red-600 py-8">
+                                <i class="fas fa-exclamation-triangle text-4xl mb-3"></i>
+                                <p class="text-lg font-medium">Erro ao carregar QR Code</p>
+                                <p class="text-sm">Erro: ${error.message}</p>
+                            </div>
+                        `;
+                    }
+                } else {
+                    console.log('⏳ QR Code não disponível ainda');
+                    const qrCodeDiv = document.getElementById('qrcode');
+                    qrCodeDiv.innerHTML = `
+                        <div class="text-center text-gray-500 py-8">
+                            <i class="fas fa-clock text-4xl mb-3"></i>
+                            <p class="text-lg font-medium">QR Code não disponível</p>
+                            <p class="text-sm">Aguarde alguns segundos e tente novamente</p>
+                        </div>
+                    `;
+                    qrCodeDisplayed = false;
+                    lastQrHash = null;
+                }
+            } catch (error) {
+                console.error('❌ Erro na requisição showQR():', error);
+                const qrCodeDiv = document.getElementById('qrcode');
+                qrCodeDiv.innerHTML = `
+                    <div class="text-center text-red-600 py-8">
+                        <i class="fas fa-wifi text-4xl mb-3"></i>
+                        <p class="text-lg font-medium">Erro de conexão</p>
+                        <p class="text-sm">Erro: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Controle de estado para evitar regeneração desnecessária
+        let qrCodeDisplayed = false;
+        let lastQrHash = null;
+        
+        // Verificar status automaticamente
+        checkStatus();
+        setInterval(checkStatus, 5000); // A cada 5 segundos
+        
+        // Mostrar QR automaticamente se disponível
+        setTimeout(showQR, 2000);
+    </script>
+</body>
+</html>

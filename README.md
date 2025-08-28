@@ -48,6 +48,14 @@ npm run dev
 ```
 Healthcheck local: abra `http://localhost:3000/` e verifique `{ ok: true }`.
 
+### Interface Web para QR Code
+Acesse `http://localhost:3000/qr` para uma interface moderna de conexão do WhatsApp Web:
+- ✅ **Interface responsiva** com Tailwind CSS
+- ✅ **Status em tempo real** da conexão
+- ✅ **QR Code visual** para escaneamento
+- ✅ **Instruções passo a passo** 
+- ✅ **Detecção automática** de conexão estabelecida
+
 ### Modo WhatsApp Web (v1)
 - Requisitos: navegador headless via Puppeteer (instalado automaticamente). Em Windows pode aparecer um prompt para instalar/atualizar o Chrome headless.
 - Primeiro uso: ao iniciar com `WHATSAPP_MODE=web`, o terminal exibirá um QR (ASCII). Escaneie com o WhatsApp do número desejado.
@@ -141,9 +149,13 @@ data/
 
 ### Endpoints
 - `GET /` → healthcheck
+- `GET /qr` → interface web moderna para conexão WhatsApp Web
+- `GET /wa-web/status` → status da conexão WhatsApp Web (JSON)
+- `GET /wa-web/qr` → QR Code atual (JSON)
 - `GET /webhook` → verificação do webhook (usa `WHATSAPP_VERIFY_TOKEN`)
 - `POST /webhook` → recepção de mensagens do WhatsApp; chama Groq e responde
 - `POST /chat` → teste local sem WhatsApp; usa RAG e retorna `{ reply, usedSnippets }`
+- `POST /webhook-test` → simulação de webhook para testes locais
 
 ## Handoff humano (transferência para atendente)
 O bot possui um modo de "atendimento humano" por contato. Quando ativado, o bot deixa de responder com IA para aquele número e apenas informa que o atendimento está com um humano, explicando como voltar ao assistente.
@@ -257,10 +269,227 @@ Sugestão (Node.js): usar `@xenova/transformers` para embeddings locais e um ín
 - Token de acesso expira: gere tokens de sistema de longa duração para produção
 - Sem webhook você não recebe mensagens; webhook é obrigatório para “ouvir” os eventos
 
-## Produção (visão geral)
-- Use domínio fixo com HTTPS (ex.: `https://bot.suaempresa.com/webhook`)
-- Atualize a Callback URL no painel do WhatsApp para a URL definitiva
-- Mantenha `process.env.PORT` para compatibilidade com providers
-- Rotacione tokens e mantenha logs de erros
+## Melhorias Implementadas
+
+### Interface Web QR Code
+- **Interface moderna** com Tailwind CSS e design responsivo
+- **Status em tempo real** com ícones e cores intuitivas  
+- **QR Code otimizado** usando biblioteca qrcode-generator
+- **Prevenção de regeneração** desnecessária com cache inteligente
+- **Instruções visuais** passo a passo para conexão
+- **Detecção automática** de WhatsApp conectado
+
+### Otimizações de Performance
+- **Controle de chamadas** evita spam de requisições QR
+- **Hash de comparação** para detectar QR duplicados
+- **Estados de interface** para melhor UX
+- **Logs estruturados** com debugging detalhado
+
+## Deploy na AWS (EC2)
+
+### Pré-requisitos
+- Conta na AWS ativa
+- Chave SSH configurada
+- Domínio próprio (opcional, mas recomendado)
+
+### Passo 1: Criar instância EC2
+1. **AWS Console** → EC2 → **Launch Instance**
+2. **Configurações recomendadas:**
+   - **Nome**: `OryxBot-Server`
+   - **AMI**: Ubuntu Server 22.04 LTS
+   - **Tipo**: `t3.small` ou `t3.medium` (para Puppeteer)
+   - **Storage**: 20GB
+   - **Key Pair**: Crie ou use uma chave SSH existente
+   - **Security Group**: Permita portas 22 (SSH), 80 (HTTP), 443 (HTTPS), 3000 (temporário)
+
+### Passo 2: Configurar servidor via SSH
+```bash
+# Conectar à instância
+ssh -i sua-chave.pem ubuntu@SEU-IP-EC2
+
+# Atualizar sistema
+sudo apt update && sudo apt upgrade -y
+
+# Instalar dependências do Puppeteer/Chrome
+sudo apt install -y \
+  wget gnupg ca-certificates fonts-liberation \
+  libasound2 libatk-bridge2.0-0 libdrm2 libxcomposite1 \
+  libxdamage1 libxrandr2 libgbm1 libxss1 libgconf-2-4 \
+  chromium-browser
+
+# Instalar Node.js 18
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Instalar PM2 e Nginx
+sudo npm install -g pm2
+sudo apt install nginx -y
+```
+
+### Passo 3: Deploy do projeto
+```bash
+# Clonar projeto
+git clone https://github.com/seu-usuario/OryxBot.git
+cd OryxBot
+
+# Instalar dependências
+npm install
+
+# Criar arquivo .env
+nano .env
+```
+
+**Exemplo de `.env` para produção:**
+```bash
+PORT=3000
+WHATSAPP_MODE=web
+GROQ_API_KEY=gsk_sua-chave-groq
+GROQ_MODEL=llama-3.1-70b-versatile
+AGENT_TONE=profissional
+RAG_TOP_K=3
+RAG_CHUNK_SIZE=800
+RAG_CHUNK_OVERLAP=120
+```
+
+### Passo 4: Configurar PM2
+```bash
+# Criar arquivo de configuração
+nano ecosystem.config.js
+```
+
+```javascript
+module.exports = {
+  apps: [{
+    name: 'oryxbot',
+    script: 'src/server.js',
+    instances: 1,
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '1G',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 3000,
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'false',
+      PUPPETEER_EXECUTABLE_PATH: '/usr/bin/chromium-browser'
+    }
+  }]
+}
+```
+
+```bash
+# Iniciar com PM2
+pm2 start ecosystem.config.js
+pm2 startup
+pm2 save
+```
+
+### Passo 5: Configurar Nginx
+```bash
+sudo nano /etc/nginx/sites-available/oryxbot
+```
+
+```nginx
+server {
+    listen 80;
+    server_name seu-dominio.com;  # ou use o IP público
+
+    # Interface QR Code
+    location /qr {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # APIs do WhatsApp Web
+    location /wa-web/ {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Demais rotas
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+```bash
+# Ativar configuração
+sudo ln -s /etc/nginx/sites-available/oryxbot /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### Passo 6: Configurar SSL (Certbot)
+```bash
+# Instalar Certbot
+sudo apt install certbot python3-certbot-nginx -y
+
+# Configurar SSL (substitua pelo seu domínio)
+sudo certbot --nginx -d seu-dominio.com
+```
+
+### Passo 7: Conectar WhatsApp
+1. **Acesse** `https://seu-dominio.com/qr`
+2. **Escaneie** o QR Code com seu WhatsApp
+3. **Aguarde** mensagem de "✅ WhatsApp conectado e pronto!"
+
+### Monitoramento
+```bash
+# Ver logs do PM2
+pm2 logs oryxbot
+
+# Status dos processos
+pm2 status
+
+# Reiniciar se necessário
+pm2 restart oryxbot
+
+# Logs do Nginx
+sudo tail -f /var/log/nginx/access.log
+sudo tail -f /var/log/nginx/error.log
+```
+
+### URLs importantes na produção
+- **Interface QR**: `https://seu-dominio.com/qr`
+- **Status API**: `https://seu-dominio.com/wa-web/status`
+- **Healthcheck**: `https://seu-dominio.com/`
+- **Webhook**: `https://seu-dominio.com/webhook` (para WhatsApp Cloud API)
+
+### Troubleshooting
+- **Puppeteer não inicia**: Verificar dependências do Chrome
+- **QR Code não aparece**: Verificar logs PM2 e permissões
+- **SSL não funciona**: Verificar DNS e configuração do Certbot
+- **Performance**: Considerar `t3.medium` para múltiplas conexões
+
+### Backup e Persistência
+```bash
+# Dados importantes para backup
+~/.wwebjs_auth/  # Sessão do WhatsApp
+~/OryxBot/data/  # Logs e dados da aplicação
+~/OryxBot/.env   # Configurações
+```
+
+## Produção (considerações adicionais)
+- Use domínio fixo com HTTPS
+- Configure monitoramento (ex: Grafana + Prometheus)  
+- Implemente rotação de logs
+- Configure backup automático dos dados de sessão
+- A interface `/qr` permite reconexão remota sem acesso SSH
 
 

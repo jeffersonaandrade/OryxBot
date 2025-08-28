@@ -75,6 +75,18 @@ if (WHATSAPP_MODE === 'web' && waWebRef && waWebRef.getClient) {
 // Healthcheck
 app.get('/', async () => ({ ok: true }));
 
+// Servir página do QR Code
+app.register(require('@fastify/static'), {
+    root: path.join(process.cwd(), 'public'),
+    prefix: '/public/',
+});
+
+app.get('/qr', async (request, reply) => {
+    const fs = require('fs');
+    const qrHtml = fs.readFileSync(path.join(process.cwd(), 'public', 'qr.html'), 'utf8');
+    reply.type('text/html').send(qrHtml);
+});
+
 // Endpoint de chat para testes sem WhatsApp
 app.post('/chat', async (request) => {
     const { message } = request.body || {};
