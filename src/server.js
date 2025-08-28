@@ -154,13 +154,82 @@ app.post('/chat', async (request) => {
     return { reply: aiReply || '', usedSnippets: snippets };
 });
 
+// Cache simples para respostas comuns (economia de tokens)
+const responseCache = new Map();
+const CACHE_TTL = 60 * 60 * 1000; // 1 hora
+
+// Respostas pré-definidas que não precisam de IA
+const PREDEFINED_RESPONSES = {
+    // Saudações básicas
+    'oi': 'Olá! Sou o assistente virtual da Oryx. Como posso ajudar com seus investimentos hoje?',
+    'olá': 'Olá! Sou o assistente virtual da Oryx. Como posso ajudar com seus investimentos hoje?',
+    'ola': 'Olá! Sou o assistente virtual da Oryx. Como posso ajudar com seus investimentos hoje?',
+    'hey': 'Olá! Sou o assistente virtual da Oryx. Como posso ajudar com seus investimentos hoje?',
+    
+    // Agradecimentos
+    'obrigado': 'De nada! Estou aqui sempre que precisar. Posso ajudar com mais alguma coisa?',
+    'obrigada': 'De nada! Estou aqui sempre que precisar. Posso ajudar com mais alguma coisa?',
+    'valeu': 'De nada! Estou aqui sempre que precisar. Posso ajudar com mais alguma coisa?',
+    'thanks': 'De nada! Estou aqui sempre que precisar. Posso ajudar com mais alguma coisa?',
+    
+    // Despedidas
+    'tchau': 'Até mais! Estarei aqui quando precisar. Tenha um ótimo dia! 😊',
+    'bye': 'Até mais! Estarei aqui quando precisar. Tenha um ótimo dia! 😊',
+    'até mais': 'Até mais! Estarei aqui quando precisar. Tenha um ótimo dia! 😊',
+};
+
 // Função comum de processamento de mensagens (usada no webhook e no teste local)
 async function handleIncoming(fromWaId, userText, toWaId, options) {
     const dryRun = Boolean(options && options.dryRun);
-    // auditoria apenas para erros a partir de agora
+    
+    // Filtros de economia de tokens
+    const trimmed = (userText || '').trim();
+    
+    // 1. Filtrar mensagens muito curtas ou inválidas
+    if (trimmed.length < 2) {
+        return 'Por favor, envie uma mensagem mais específica para que eu possa ajudar melhor! 😊';
+    }
+    
+    // 2. Verificar respostas pré-definidas (sem usar IA)
+    const normalized = trimmed.toLowerCase();
+    const predefinedKey = Object.keys(PREDEFINED_RESPONSES).find(key => 
+        normalized === key || normalized.startsWith(key + ' ')
+    );
+    
+    if (predefinedKey) {
+        const response = PREDEFINED_RESPONSES[predefinedKey];
+        if (!dryRun) await waSendText(fromWaId, response);
+        
+        appendInteraction({
+            timestampIso: new Date().toISOString(),
+            fromWaId,
+            toWaId,
+            userText,
+            botText: response + ' [cached]'
+        });
+        
+        return response;
+    }
+    
+    // 3. Verificar cache de respostas
+    const cacheKey = `${normalized.substring(0, 50)}`; // Primeiros 50 chars
+    const cached = responseCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+        const response = cached.response;
+        if (!dryRun) await waSendText(fromWaId, response);
+        
+        appendInteraction({
+            timestampIso: new Date().toISOString(),
+            fromWaId,
+            toWaId,
+            userText,
+            botText: response + ' [cached]'
+        });
+        
+        return response;
+    }
 
     // Regras de handoff humano
-    const normalized = (userText || '').toLowerCase();
     const wantsHuman = [
         'atendente',
         'ser humano',
@@ -268,6 +337,14 @@ async function handleIncoming(fromWaId, userText, toWaId, options) {
         { role: 'system', content: composedSystem },
         { role: 'user', content: userText }
     ]);
+
+    // Armazenar no cache para futuras consultas similares
+    if (aiReply && aiReply.trim().length > 0) {
+        responseCache.set(cacheKey, {
+            response: aiReply,
+            timestamp: Date.now()
+        });
+    }
 
     const needsDisclaimer = !contextText || (Array.isArray(snippets) && snippets.length === 0);
     const finalReply = aiReply && aiReply.trim().length > 0
@@ -384,6 +461,13 @@ app.post('/webhook', async (request, reply) => {
                     }
 
                     const fromWaId = message.from; // ex: 55XXXXXXXXXXX
+                    
+                    // Ignorar mensagens de grupos (WhatsApp Cloud API)
+                    if (fromWaId && fromWaId.endsWith('@g.us')) {
+                        appendAudit('ignored_message', { reason: 'group_message', fromWaId });
+                        continue;
+                    }
+                    
                     const userText = message.text && message.text.body ? message.text.body : '';
                     const toWaId = metadata.display_phone_number || '';
 

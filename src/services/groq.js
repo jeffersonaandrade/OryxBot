@@ -16,7 +16,7 @@ async function generateReply(groqClient, messages) {
         model,
         messages,
         temperature: 0.2,
-        max_tokens: 400,
+        max_tokens: 250, // Otimizado para economia
     });
     const choice = response && response.choices && response.choices[0];
     const content = choice && choice.message && choice.message.content;

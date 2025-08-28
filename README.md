@@ -157,6 +157,39 @@ data/
 - `POST /chat` → teste local sem WhatsApp; usa RAG e retorna `{ reply, usedSnippets }`
 - `POST /webhook-test` → simulação de webhook para testes locais
 
+## Filtro de Mensagens e Economia de Tokens
+
+O bot possui filtros inteligentes que economizam tokens da Groq, processando apenas mensagens relevantes:
+
+### Fluxo de Processamento
+```mermaid
+graph TD
+    A[Mensagem chega] --> B{É grupo?}
+    B -->|Sim @g.us| C[❌ IGNORADO]
+    B -->|Não| D{É texto?}
+    D -->|Não| E[❌ IGNORADO]
+    D -->|Sim| F[🤖 Processar com Groq]
+    
+    C --> G[💰 Token NÃO gasto]
+    E --> G
+    F --> H[💰 Token gasto]
+```
+
+### Tipos de Mensagem Filtradas (SEM gastar tokens)
+- **🚫 Grupos**: Mensagens com `@g.us` são ignoradas automaticamente
+- **🎤 Áudios**: Resposta educativa pedindo texto
+- **📷 Imagens**: Orientação para descrever por escrito  
+- **🎥 Vídeos**: Solicitação de pergunta por texto
+- **📄 Documentos**: Pedido para explicar por escrito
+- **😄 Stickers**: Resposta amigável pedindo texto
+- **📍 Localização**: Orientação para explicar por escrito
+
+### Economia de Recursos
+- ✅ **Filtro no backend** antes de chamar a Groq
+- ✅ **Auditoria completa** de mensagens ignoradas
+- ✅ **Respostas educativas** para tipos não suportados
+- ✅ **Proteção contra spam** de grupos
+
 ## Handoff humano (transferência para atendente)
 O bot possui um modo de "atendimento humano" por contato. Quando ativado, o bot deixa de responder com IA para aquele número e apenas informa que o atendimento está com um humano, explicando como voltar ao assistente.
 
